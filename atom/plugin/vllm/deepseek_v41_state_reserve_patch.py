@@ -57,14 +57,24 @@ The install is idempotent, so both call sites is fine.
 from __future__ import annotations
 
 import functools
+import inspect
 import logging
+
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
 
 logger = logging.getLogger("atom")
 
 # vLLM resolves ``get_kv_cache_configs`` by module attribute at call time, so
 # every module that imported the name needs rebinding. ``v1.engine.core`` is
-# the only importer in 0.28; ``v1.core.kv_cache_utils`` is where it is defined.
+# the only importer; the defining module moved in 0.33, from
+# ``v1.core.kv_cache_utils`` to ``v1.core.kv_cache_planning``, so both are
+# listed and whichever one actually has the symbol is the one that gets
+# patched. Listing the old name is not redundant: it still imports cleanly at
+# 0.33, which is exactly why hardcoding it stopped working silently rather
+# than loudly. See KV_CACHE_PLANNING_MODULES in _compat.py.
 _PATCH_TARGETS = (
+    "vllm.v1.core.kv_cache_planning",
     "vllm.v1.core.kv_cache_utils",
     "vllm.v1.engine.core",
 )
@@ -208,6 +218,24 @@ def _reserve_state_tail(configs, reserve: int, vllm_config) -> None:
         )
 
 
+@_atom_patch("deepseek_v41_state_reserve_patch._patch_auto_fit")
+def _call_pool_bytes(fn, vllm_config, groups) -> int:
+    """``_pool_bytes_per_block``, called with whatever arity this vLLM wants.
+
+    0.31 takes ``(kv_cache_groups)``; 0.33 takes ``(vllm_config,
+    kv_cache_groups)``. Resolved off the function in hand rather than off
+    ``_compat.pool_bytes_per_block`` because this one may be ATOM's OWN
+    replacement: ``spec_decode_patch`` rebinds the module attribute for
+    heterogeneous pools, and the comment at the call site requires that
+    replacement to be the thing invoked here.
+    """
+    try:
+        takes_config = "vllm_config" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        takes_config = True
+    return fn(vllm_config, groups) if takes_config else fn(groups)
+
+
 def _patch_auto_fit(module) -> bool:
     """Let ``--max-model-len -1`` fit against the pool minus the STATE tail.
 
@@ -228,7 +256,9 @@ def _patch_auto_fit(module) -> bool:
             pool_bytes = getattr(module, _POOL_BYTES_ATTR, None)
             if pool_bytes is not None:
                 available_memory = [
-                    max(0, memory - reserve * pool_bytes(groups)) if groups else memory
+                    max(0, memory - reserve * _call_pool_bytes(pool_bytes, vllm_config, groups))
+                    if groups
+                    else memory
                     for groups, memory in zip(
                         projected_groups_per_worker, available_memory
                     )
@@ -247,11 +277,13 @@ def _patch_auto_fit(module) -> bool:
     return True
 
 
+@_atom_patch("deepseek_v41_state_reserve_patch.apply_vllm_v41_state_reserve_patch")
 def apply_vllm_v41_state_reserve_patch() -> bool:
     """Wrap ``get_kv_cache_configs`` so V4.1 pools keep a STATE tail. Idempotent."""
     import importlib
 
     modules = []
+    missing = []
     for name in _PATCH_TARGETS:
         try:
             modules.append(importlib.import_module(name))
@@ -259,6 +291,13 @@ def apply_vllm_v41_state_reserve_patch() -> bool:
             logger.debug(
                 "ATOM V4.1 state-reserve patch: %s unavailable (%s), skip", name, e
             )
+            missing.append(f"{name} ({e})")
+    # Reported only if ALL of them are gone. Some of these names are expected
+    # to be absent on any given vLLM -- that is the point of listing the old
+    # and new homes of the same function -- so reporting each miss would mark
+    # a fully successful install as a stand-down.
+    if not modules:
+        _atom_stood_down("no target module imported: " + "; ".join(missing))
     # The auto-fit lives only where it is defined, and is patched whether or
     # not the outer wrap below is still needed.
     for module in modules:

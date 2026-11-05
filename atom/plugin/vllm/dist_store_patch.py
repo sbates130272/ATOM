@@ -21,6 +21,8 @@ from __future__ import annotations
 import logging
 import sys
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 _EXECUTOR_MODULES = (
@@ -33,6 +35,7 @@ def _atom_requires_tcp_store() -> bool:
     return True
 
 
+@_atom_patch("dist_store_patch.apply_vllm_tcp_store_patch")
 def apply_vllm_tcp_store_patch() -> None:
     from vllm.utils import network_utils
 

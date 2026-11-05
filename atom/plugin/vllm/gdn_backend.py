@@ -22,6 +22,8 @@ from vllm.v1.attention.backends.registry import (
 )
 from vllm.v1.attention.backends.utils import PAD_SLOT_ID, mamba_get_block_table_tensor
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 _GDN_BACKEND_REGISTERED = False
@@ -143,6 +145,7 @@ class AtomGDNAttentionBackend(GDNAttentionBackend):
         return AtomGDNAttentionMetadataBuilder
 
 
+@_atom_patch("gdn_backend.register_gdn_attention_backend")
 def register_gdn_attention_backend() -> None:
     global _GDN_BACKEND_REGISTERED
     if _GDN_BACKEND_REGISTERED:

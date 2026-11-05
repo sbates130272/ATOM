@@ -19,6 +19,9 @@ from typing import Any
 
 import torch
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
+
 logger = logging.getLogger("atom")
 
 # What this module built and what it wrote into aiter's globals, kept so that
@@ -209,6 +212,7 @@ def shutdown_aiter_dist_from_vllm() -> bool:
     return True
 
 
+@_atom_patch("tp_group_reuse.apply_vllm_worker_shutdown_patch")
 def apply_vllm_worker_shutdown_patch() -> int:
     """Run that teardown from vLLM's worker shutdown. Returns classes covered.
 
@@ -233,11 +237,15 @@ def apply_vllm_worker_shutdown_patch() -> int:
     """
     try:
         from vllm.v1.worker.gpu_worker import Worker
-    except ImportError:
+    except ImportError as e:
+        _atom_stood_down(f"vllm.v1.worker.gpu_worker.Worker unavailable: {e}")
         return 0
 
     original = getattr(Worker, "shutdown", None)
-    if original is None or getattr(original, "_atom_worker_shutdown_patched", False):
+    if original is None:
+        _atom_stood_down("vllm Worker has no shutdown method to wrap")
+        return 0
+    if getattr(original, "_atom_worker_shutdown_patched", False):
         return 0
 
     @functools.wraps(original)

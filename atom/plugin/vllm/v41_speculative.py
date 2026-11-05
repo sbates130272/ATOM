@@ -22,6 +22,8 @@ import logging
 import torch
 from torch import nn
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 _DEEPSEEK_V41_ARCHES = ("DeepseekV41ForCausalLM",)
@@ -191,6 +193,7 @@ def _would_mix_prefill_with_drafts(scheduler) -> bool:
     )
 
 
+@_atom_patch("v41_speculative.patch_v41_speculative_scheduling")
 def patch_v41_speculative_scheduling() -> bool:
     """Wrap `Scheduler.schedule`. Returns whether it was installed here."""
     from vllm.v1.core.sched.scheduler import Scheduler
@@ -250,6 +253,7 @@ def _anchors(num_rejected, query_start_loc, count):
     return ends - 1 - num_rejected[:count].to(ends.dtype)
 
 
+@_atom_patch("v41_speculative.patch_v41_speculative_commit")
 def patch_v41_speculative_commit() -> int:
     """Wrap `postprocess_sampled` on every runner class. Returns the count."""
     from atom.plugin.vllm.vllm_runtime import gpu_model_runner_classes

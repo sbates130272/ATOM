@@ -39,6 +39,8 @@ from atom.model_ops.engram.device.hashing import engram_snapshot_indices
 from atom.model_ops.engram.device.staging import EngramStaging
 from atom.model_ops.engram.device.uva import uva_gather_into
 from atom.model_ops.v4_kernels import sparse_attn_v4_paged_2src
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
 from atom.utils.region_graph import join_stream
 
 logger = logging.getLogger("atom")
@@ -557,6 +559,7 @@ def _forward(
     )
 
 
+@_atom_patch("v41_core_overrides.apply_v41_eager_break")
 def apply_v41_eager_break(graphs_enabled: bool) -> bool:
     """Install the broken-out forward on `Attention`. Idempotent.
 
@@ -570,7 +573,11 @@ def apply_v41_eager_break(graphs_enabled: bool) -> bool:
         return False
     try:
         from vllm.compilation.breakable_cudagraph import eager_break_during_capture
-    except ImportError:
+    except ImportError as e:
+        _atom_stood_down(
+            "vllm.compilation.breakable_cudagraph.eager_break_during_capture "
+            f"unavailable: {e}"
+        )
         return False
 
     from atom.models.deepseek_v41.attention import Attention

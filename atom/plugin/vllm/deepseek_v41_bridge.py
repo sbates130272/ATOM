@@ -49,6 +49,8 @@ from vllm.v1.attention.backend import (
 )
 from vllm.v1.kv_cache_interface import FullAttentionSpec, KVCacheSpec
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger(__name__)
 
 # The one fake layer vLLM sees. Named under `model.layers.0.` so vLLM's own
@@ -911,6 +913,7 @@ class AtomDeepseekV41ProxyAttention(nn.Module, AttentionLayerBase):
         )
 
 
+@_atom_patch("deepseek_v41_bridge.register_deepseek_v41_proxy_layer")
 def register_deepseek_v41_proxy_layer(
     vllm_config,
     layer_name: str = ATOM_DEEPSEEK_V41_PROXY_LAYER_NAME,

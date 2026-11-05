@@ -19,6 +19,8 @@ import functools
 import logging
 import threading
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 
@@ -138,6 +140,7 @@ def in_dummy_run() -> bool:
     return bool(getattr(_dummy_local, "active", False))
 
 
+@_atom_patch("vllm_runtime.apply_vllm_dummy_run_patch")
 def apply_vllm_dummy_run_patch() -> int:
     """Mark the window `_dummy_run` spans. Returns how many classes it covers.
 

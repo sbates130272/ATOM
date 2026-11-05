@@ -1,9 +1,12 @@
 import functools
 import logging
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 
+@_atom_patch("cudagraph_memory_profiler_patch.apply_vllm_cudagraph_memory_profiler_patch")
 def apply_vllm_cudagraph_memory_profiler_patch() -> None:
     """Skip vLLM's temporary CUDA graph capture on ROCm.
 

@@ -39,6 +39,8 @@ from vllm.v1.attention.backend import (
     AttentionMetadataBuilder,
 )
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 
@@ -105,6 +107,7 @@ class PagedStateCheckpointAdapter:
 _adapters: list[PagedStateCheckpointAdapter] = []
 
 
+@_atom_patch("paged_state_checkpoint.register_state_checkpoint_adapter")
 def register_state_checkpoint_adapter(
     adapter: PagedStateCheckpointAdapter,
 ) -> PagedStateCheckpointAdapter:
@@ -246,6 +249,7 @@ class PagedStateCheckpointLayer(nn.Module, AttentionLayerBase):
         self.kv_cache = (pages,)
 
 
+@_atom_patch("paged_state_checkpoint.register_state_checkpoint_layers")
 def register_state_checkpoint_layers(
     adapter, vllm_config, layer_cls=PagedStateCheckpointLayer
 ) -> list[str]:
@@ -369,9 +373,15 @@ def _refit_max_model_len(vllm_config, configs, proxy_name, sizing) -> None:
     null block), with vLLM's own estimate. The allocation itself is unchanged:
     the slots live in the withheld tail. EngineCore passes a lowered length on
     to the workers and the frontend."""
-    from vllm.v1.core.kv_cache_utils import (
-        _auto_fit_max_model_len,
-        _pool_bytes_per_block,
+    # Through the shim, not `from vllm.v1.core.kv_cache_utils import ...`:
+    # vLLM 0.33 split that module into kv_cache_planning and
+    # kv_cache_config_builder, and gave `_pool_bytes_per_block` a vllm_config
+    # first parameter on the way. Both are private, so there is no deprecation
+    # shim upstream and no warning -- see RELOCATIONS in _compat.py.
+    from atom.plugin.vllm import _compat
+
+    _auto_fit_max_model_len = _compat.resolve(
+        "vllm.v1.core.kv_cache_utils:_auto_fit_max_model_len"
     )
 
     mine = [
@@ -386,7 +396,7 @@ def _refit_max_model_len(vllm_config, configs, proxy_name, sizing) -> None:
         [c.kv_cache_groups for c in mine],
         [
             (sizing.usable_blocks(int(c.num_blocks)) - 1)
-            * _pool_bytes_per_block(c.kv_cache_groups)
+            * _compat.pool_bytes_per_block(vllm_config, c.kv_cache_groups)
             for c in mine
         ],
     )
@@ -595,6 +605,7 @@ def current_state_checkpoint_store_plan() -> dict[str, int]:
     return _store_plan
 
 
+@_atom_patch("paged_state_checkpoint.register_state_checkpoint_worker")
 def register_state_checkpoint_worker(worker) -> None:
     """The worker whose stores run after every model forward of this process."""
     _workers[worker.adapter.name] = worker
@@ -604,6 +615,7 @@ def store_counts() -> dict:
     return dict(_store_counts)
 
 
+@_atom_patch("paged_state_checkpoint.register_slot_allocator")
 def register_slot_allocator(allocator) -> None:
     """``allocator.release(req_ids)`` gets vLLM's finished / preempted / resumed ids."""
     if not any(a is allocator for a in _slot_allocators):
@@ -650,6 +662,7 @@ def _note_scheduler_output(runner, scheduler_output) -> None:
 _STEP_ENTRY_METHODS = ("_update_states", "finish_requests")
 
 
+@_atom_patch("paged_state_checkpoint._patch_runner_class")
 def _patch_runner_class(runner_cls) -> bool:
     """Hook one runner class. Returns whether this call installed anything."""
     entry = next((m for m in _STEP_ENTRY_METHODS if hasattr(runner_cls, m)), None)

@@ -899,12 +899,22 @@ def get_hf_config(model: str, trust_remote_code: bool = False) -> PretrainedConf
         # For the unsupported model in current transformers, try vllm if in plugin mode
         if is_vllm():
             from vllm.transformers_utils.config import get_config
-            from vllm.transformers_utils.gguf_utils import (
-                maybe_patch_hf_config_from_gguf,
-            )
+
+            from atom.plugin.vllm._compat import resolve
 
             hf_config = get_config(model, trust_remote_code=trust_remote_code)
-            hf_config = maybe_patch_hf_config_from_gguf(model, hf_config)
+            # Optional: no vLLM in the supported range has a
+            # `gguf_utils.maybe_patch_hf_config_from_gguf` -- ATOM v0.1.9
+            # imports it unguarded, so this branch raised ImportError on every
+            # config transformers could not parse, masking the real reason.
+            # Without it the config is simply not GGUF-patched.
+            patch_gguf = resolve(
+                "vllm.transformers_utils.gguf_utils:"
+                "maybe_patch_hf_config_from_gguf",
+                required=False,
+            )
+            if patch_gguf is not None:
+                hf_config = patch_gguf(model, hf_config)
         else:
             raise
     return hf_config

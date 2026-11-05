@@ -28,6 +28,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from atom.plugin.vllm._compat import patch as _atom_patch
 from atom.plugin.vllm.paged_state_checkpoint import (
     PagedStateCheckpointAdapter,
     PagedStateCheckpointBackend,
@@ -426,6 +427,7 @@ class AtomDeepseekV4StateCheckpointLayer(PagedStateCheckpointLayer):
         )
 
 
+@_atom_patch("deepseek_v4_state_checkpoint.register_deepseek_v4_state_checkpoint_layers")
 def register_deepseek_v4_state_checkpoint_layers(vllm_config) -> list[str]:
     """Register the k state checkpoint layers next to the proxy (worker side)."""
     return register_state_checkpoint_layers(
@@ -546,10 +548,12 @@ def v4_drafter_in_target_slot(vllm_config) -> bool:
 _V4_ADAPTER = DeepseekV4StateCheckpointAdapter()
 
 
+@_atom_patch("deepseek_v4_state_checkpoint.register_v4_state_checkpoint_adapter")
 def register_v4_state_checkpoint_adapter() -> DeepseekV4StateCheckpointAdapter:
     return register_state_checkpoint_adapter(_V4_ADAPTER)
 
 
+@_atom_patch("deepseek_v4_state_checkpoint.apply_vllm_v4_prefix_install")
 def apply_vllm_v4_prefix_install() -> None:
     """Register the V4 adapter and install every state checkpoint hook. Idempotent;
     called from register_model.

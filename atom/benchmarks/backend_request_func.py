@@ -474,14 +474,16 @@ def get_tokenizer(
             raise ValueError("Cannot use the fast tokenizer in slow tokenizer mode.")
         kwargs["use_fast"] = False
     if tokenizer_mode == "mistral":
-        try:
-            from vllm.transformers_utils.tokenizer import MistralTokenizer
-        except ImportError as e:
-            raise ImportError(
-                "MistralTokenizer requires vllm package.\n"
-                "Please install it with `pip install vllm` "
-                "to use mistral tokenizer mode."
-            ) from e
+        # vLLM moved this to vllm.tokenizers.mistral before 0.31, so the
+        # original single-location import failed on every supported vLLM and
+        # the handler below reported it as "vllm is not installed" -- which it
+        # was. Resolved through the shim so the error, if it comes, names the
+        # locations actually tried and the vLLM version that lacked them.
+        from atom.plugin.vllm._compat import resolve
+
+        MistralTokenizer = resolve(
+            "vllm.transformers_utils.tokenizer:MistralTokenizer"
+        )
         return MistralTokenizer.from_pretrained(str(pretrained_model_name_or_path))
     else:
         return AutoTokenizer.from_pretrained(

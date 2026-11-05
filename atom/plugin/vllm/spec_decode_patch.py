@@ -1,6 +1,8 @@
 import functools
 import logging
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
 from atom.utils import envs
 
 logger = logging.getLogger("atom")
@@ -30,6 +32,7 @@ def _make_atom_compatible_eagle3_type(original_cls, atom_model_base):
     )
 
 
+@_atom_patch("spec_decode_patch._patch_eagle3_model_type_checks")
 def _patch_eagle3_model_type_checks() -> None:
     # vLLM's V1 EAGLE proposer SpecDecodeBaseProposer.propose() has an explicit
     # isinstance() check for native vLLM EAGLE3 model classes before calling
@@ -70,6 +73,7 @@ def _patch_eagle3_model_type_checks() -> None:
     logger.info("ATOM plugin: patched vLLM EAGLE3 proposer type checks.")
 
 
+@_atom_patch("spec_decode_patch._patch_dspark_fused_markov_sample")
 def _patch_dspark_fused_markov_sample() -> None:
     """Sample the DSpark block with the fused Markov bias+argmax kernel.
 
@@ -342,13 +346,14 @@ def _build_heterogeneous_kv_cache_config_from_groups(
 ):
     # Custom kv cache allocator for mixed mla/mha target/draft layout.
     # Allocates a single number of blocks for all layers of both groups
-    from vllm.v1.core.kv_cache_utils import may_override_num_blocks
     from vllm.v1.kv_cache_interface import (
         KVCacheConfig,
         KVCacheTensor,
         UniformTypeKVCacheSpecs,
         compute_layout_strides,
     )
+
+    from atom.plugin.vllm._compat import resolve
 
     def _iter_layer_specs(group):
         spec = group.kv_cache_spec
@@ -367,7 +372,10 @@ def _build_heterogeneous_kv_cache_config_from_groups(
     assert bytes_per_block_all_layers > 0, "Zero per-block bytes"
     num_blocks = available_memory // bytes_per_block_all_layers
     num_blocks = max(num_blocks, 0)
-    num_blocks = may_override_num_blocks(vllm_config, num_blocks)
+    # Relocated to vllm.v1.core.kv_cache_planning in 0.33; see _compat.
+    num_blocks = resolve("vllm.v1.core.kv_cache_utils:may_override_num_blocks")(
+        vllm_config, num_blocks
+    )
 
     # vLLM 0.29 puts every KVCacheTensor in one backing allocation and asks each
     # for the same total `size`; a tensor picks out its own bytes with `offset`
@@ -457,19 +465,28 @@ def _iter_group_layer_specs(group):
             yield layer_name, spec
 
 
+@_atom_patch("spec_decode_patch._patch_heterogeneous_eagle3_kv_cache")
 def _patch_heterogeneous_eagle3_kv_cache() -> None:
     """Patch vLLM KV-cache grouping/allocation for heterogeneous KV cache so
     MLA target can coexist with an MHA EAGLE3 draft.
     Only MLA target and MHA draft combination is supported for now.
     """
     try:
-        import vllm.v1.core.kv_cache_utils as vllm_kv_cache_utils
+        # NOT `import vllm.v1.core.kv_cache_utils`: that module still exists at
+        # 0.33 but defines none of the four functions patched below, so the
+        # import would succeed and `orig_get_groups = ...get_kv_cache_groups`
+        # would then raise AttributeError from inside registration. Ask for the
+        # module that owns the symbol instead.
+        from atom.plugin.vllm._compat import kv_cache_planning_module
+
+        vllm_kv_cache_utils = kv_cache_planning_module("get_kv_cache_groups")
     except Exception:
         logger.warning(
-            "ATOM plugin: failed to import vLLM kv_cache_utils; cannot enable "
-            "MLA target with MHA EAGLE3 draft. This can happen with "
+            "ATOM plugin: no vLLM module defines get_kv_cache_groups; cannot "
+            "enable MLA target with MHA EAGLE3 draft. This can happen with "
             "incompatible vLLM version."
         )
+        _atom_stood_down("no vLLM module defines get_kv_cache_groups")
         return
 
     if getattr(vllm_kv_cache_utils, "_atom_heterogeneous_eagle3_patched", False):
@@ -558,6 +575,7 @@ def _share_atom_draft_with_target(draft_wrapper, target_model) -> None:
     )
 
 
+@_atom_patch("spec_decode_patch._patch_vllm_llm_base_model_sharing")
 def _patch_vllm_llm_base_model_sharing() -> None:
     """Run ATOM draft sharing after vLLM's generic MTP sharing path, and widen
     the proposer's ``allowed_attn_types`` with ``CommonAttentionMetadata`` for
@@ -596,6 +614,7 @@ def _patch_vllm_llm_base_model_sharing() -> None:
     SpecDecodeBaseProposer.load_model = wrapped_load_model
 
 
+@_atom_patch("spec_decode_patch._patch_vllm_draft_kv_group_validation")
 def _patch_vllm_draft_kv_group_validation() -> None:
     from vllm.v1.spec_decode.llm_base_proposer import SpecDecodeBaseProposer
 
@@ -677,6 +696,7 @@ def _patch_vllm_draft_kv_group_validation() -> None:
     SpecDecodeBaseProposer.initialize_attn_backend = wrapped_initialize_attn_backend
 
 
+@_atom_patch("spec_decode_patch._patch_vllm_draft_positions_on_metadata")
 def _patch_vllm_draft_positions_on_metadata() -> None:
     from vllm.v1.spec_decode.llm_base_proposer import SpecDecodeBaseProposer
 
@@ -724,6 +744,7 @@ def _patch_vllm_draft_positions_on_metadata() -> None:
     )
 
 
+@_atom_patch("spec_decode_patch._patch_vllm_deepseek_v4_mtp_first_pass_inputs")
 def _patch_vllm_deepseek_v4_mtp_first_pass_inputs() -> None:
     from vllm.v1.spec_decode.llm_base_proposer import SpecDecodeBaseProposer
 
@@ -769,6 +790,7 @@ def _patch_vllm_deepseek_v4_mtp_first_pass_inputs() -> None:
     SpecDecodeBaseProposer.set_inputs_first_pass = wrapped_set_inputs_first_pass
 
 
+@_atom_patch("spec_decode_patch._patch_vllm_dspark_dcp_inputs")
 def _patch_vllm_dspark_dcp_inputs() -> None:
     """Localize the DSpark draft's KV slots when DCP shards the pool."""
     from atom.plugin.vllm.dspark_dcp_patch import (
@@ -778,6 +800,7 @@ def _patch_vllm_dspark_dcp_inputs() -> None:
     apply_vllm_dspark_dcp_input_patch()
 
 
+@_atom_patch("spec_decode_patch.apply_vllm_spec_decode_patch")
 def apply_vllm_spec_decode_patch() -> None:
     """Patch vLLM speculative decoding for ATOM metadata compatibility."""
     _patch_dspark_fused_markov_sample()

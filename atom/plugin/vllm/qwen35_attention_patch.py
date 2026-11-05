@@ -14,6 +14,7 @@ from torch import nn
 from atom.config import get_current_atom_config
 from atom.model_ops.attention_mla import MLAModules
 from atom.model_ops.base_attention import BaseAttention
+from atom.plugin.vllm._compat import patch as _atom_patch
 from atom.plugin.vllm.attention_bridge import (
     unified_attention_with_output_base_for_plugin_mode,
 )
@@ -160,6 +161,7 @@ class Qwen35VllmPagedAttention(BaseAttention):
         )
 
 
+@_atom_patch("qwen35_attention_patch.apply_qwen35_vllm_attention_patch")
 def apply_qwen35_vllm_attention_patch() -> None:
     """Monkeypatch Attention construction for Qwen3.5 vLLM plugin models."""
     global _QWEN35_ATTENTION_PATCH_APPLIED

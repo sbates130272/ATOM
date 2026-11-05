@@ -40,6 +40,8 @@ import logging
 import os
 import threading
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
 from atom.utils import envs as _envs
 
 logger = logging.getLogger("atom")
@@ -111,6 +113,7 @@ def _opt_out_of_breakable_cudagraph(vllm_config) -> None:
         )
 
 
+@_atom_patch("deepseek_v4_cudagraph_patch.apply_vllm_v4_breakable_cudagraph_opt_out")
 def apply_vllm_v4_breakable_cudagraph_opt_out() -> bool:
     """Wrap ``VllmConfig.__post_init__`` so ATOM's V4 opts out before vLLM's
     auto-enable runs. ``VllmConfig`` is a pydantic dataclass; pydantic calls
@@ -120,6 +123,7 @@ def apply_vllm_v4_breakable_cudagraph_opt_out() -> bool:
         from vllm.config import VllmConfig
     except Exception as e:  # noqa: BLE001
         logger.debug("[atom-v4-cg] VllmConfig unavailable (%s), skip", e)
+        _atom_stood_down(f"vllm.config.VllmConfig unavailable: {e}")
         return False
     original = VllmConfig.__post_init__
     if getattr(original, "_atom_v4_breakable_opt_out", False):
@@ -238,6 +242,7 @@ def _runner_is_atom_v4(runner) -> bool:
     return cached
 
 
+@_atom_patch("deepseek_v4_cudagraph_patch.apply_vllm_v4_prefill_not_uniform_patch")
 def apply_vllm_v4_prefill_not_uniform_patch() -> bool:
     """Wrap V1 ``GPUModelRunner._determine_batch_execution_and_padding`` and
     ``_build_attention_metadata`` for ATOM's V4. Idempotent."""
@@ -245,6 +250,9 @@ def apply_vllm_v4_prefill_not_uniform_patch() -> bool:
         from vllm.v1.worker.gpu_model_runner import GPUModelRunner
     except Exception as e:  # noqa: BLE001
         logger.debug("[atom-v4-cg] GPUModelRunner unavailable (%s), skip", e)
+        _atom_stood_down(
+            f"vllm.v1.worker.gpu_model_runner.GPUModelRunner unavailable: {e}"
+        )
         return False
 
     dispatch = GPUModelRunner._determine_batch_execution_and_padding

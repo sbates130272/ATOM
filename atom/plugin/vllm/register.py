@@ -4,6 +4,7 @@ import torch
 from transformers import AutoConfig, PretrainedConfig
 
 from atom.plugin.prepare import _set_framework_backbone
+from atom.plugin.vllm._compat import patch as _atom_patch
 from atom.plugin.vllm.spec_decode_patch import apply_vllm_spec_decode_patch
 from atom.utils import envs
 
@@ -345,6 +346,7 @@ def _register_kv_connectors() -> None:
     logger.info("Registered ATOM KV connector: %s", name)
 
 
+@_atom_patch("register._patch_vllm_attention_process_weights_after_loading")
 def _patch_vllm_attention_process_weights_after_loading(attention) -> None:
     orig = attention.process_weights_after_loading
 
@@ -374,6 +376,7 @@ def _patch_vllm_attention_process_weights_after_loading(attention) -> None:
     attention.process_weights_after_loading = wrapped
 
 
+@_atom_patch("register._patch_vllm_harmony_parser_manager")
 def _patch_vllm_harmony_parser_manager() -> None:
     """Restore vLLM's documented Harmony parser selection contract."""
     try:

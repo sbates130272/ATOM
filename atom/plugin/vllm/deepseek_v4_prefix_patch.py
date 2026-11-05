@@ -30,6 +30,8 @@ import functools
 import logging
 import math
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 
@@ -69,6 +71,7 @@ def _kv_cache_config_needs_non_immediate_reuse(kv_cache_config) -> bool:
     )
 
 
+@_atom_patch("deepseek_v4_prefix_patch.apply_vllm_v4_block_reuse_patch")
 def apply_vllm_v4_block_reuse_patch() -> None:
     """Keep no-prefix-cache block reuse safe for ATOM stateful cache layouts.
 
@@ -133,6 +136,7 @@ def apply_vllm_v4_block_reuse_patch() -> None:
     logger.info("ATOM DeepSeek-V4: installed packed-proxy block reuse patch")
 
 
+@_atom_patch("deepseek_v4_prefix_patch.apply_vllm_v4_profile_cache_patch")
 def apply_vllm_v4_profile_cache_patch() -> None:
     """Mark vLLM 0.26's temporary CUDA-graph profiling KV cache.
 
@@ -211,6 +215,7 @@ def _drop_swa_warmup_blocks(
     return new_blocks, new_num_computed_tokens, shared_prefix_boundary
 
 
+@_atom_patch("deepseek_v4_prefix_patch.apply_vllm_v4_prefix_swa_patch")
 def apply_vllm_v4_prefix_swa_patch(vllm_config) -> None:
     """Enable DeepSeek-V4 prefix caching by dropping the SWA warmup blocks.
 

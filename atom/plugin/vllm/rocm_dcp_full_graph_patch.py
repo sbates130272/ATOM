@@ -2,9 +2,12 @@
 
 import logging
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 
+@_atom_patch("rocm_dcp_full_graph_patch.apply_vllm_rocm_dcp_full_graph_patch")
 def apply_vllm_rocm_dcp_full_graph_patch() -> None:
     """Remove vLLM's blanket DCP-to-PIECEWISE downgrade on ROCm.
 

@@ -24,6 +24,7 @@ from aiter.jit.utils.chip_info import get_cu_num
 import atom.model_ops.fused_moe.modular_kernel as mk
 from atom.model_ops.fused_moe.mori_prepare_finalize import MoriPrepareAndFinalize
 from atom.plugin.config import VLLM_MORI_LAUNCH_CONFIG_TOKEN_THRESHOLD
+from atom.plugin.vllm._compat import patch as _atom_patch
 
 _MORI_PATCH_APPLIED = False
 
@@ -133,6 +134,7 @@ def trim_vllm_mori_dispatch_tensors(
     return dispatch_a1, dispatch_scale, dispatch_ids, dispatch_weights
 
 
+@_atom_patch("mori_patch.apply_vllm_mori_patch")
 def apply_vllm_mori_patch() -> None:
     """Monkeypatch the MORI MoE seams with atom-vllm-specific behavior."""
     global _MORI_PATCH_APPLIED

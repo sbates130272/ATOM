@@ -55,6 +55,9 @@ import functools
 import logging
 import threading
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
+
 logger = logging.getLogger("atom")
 
 _req_id_local = threading.local()
@@ -152,6 +155,7 @@ def _wrap_with_req_id_snapshot(cls, method_name: str, batch_from_arg=False) -> b
     return True
 
 
+@_atom_patch("req_id_passthrough_patch.apply_vllm_req_id_passthrough_patch")
 def apply_vllm_req_id_passthrough_patch() -> bool:
     try:
         from vllm.v1.worker.gpu_model_runner import GPUModelRunner
@@ -160,6 +164,9 @@ def apply_vllm_req_id_passthrough_patch() -> bool:
             "ATOM vLLM req_id passthrough patch: GPUModelRunner unavailable (%s), "
             "skip",
             e,
+        )
+        _atom_stood_down(
+            f"vllm.v1.worker.gpu_model_runner.GPUModelRunner unavailable: {e}"
         )
         return False
 
@@ -207,6 +214,7 @@ def apply_vllm_req_id_passthrough_patch() -> bool:
 _STATE_FACTORY_INSTALLED = ("factory", "already")
 
 
+@_atom_patch("req_id_passthrough_patch._patch_model_state_factory")
 def _patch_model_state_factory() -> str:
     """Wrap `prepare_attn` on whatever model state the runner actually builds.
 

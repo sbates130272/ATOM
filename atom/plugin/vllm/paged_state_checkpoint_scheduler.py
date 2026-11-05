@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from vllm.v1.core.kv_cache_utils import resolve_block_hashes
 
+from atom.plugin.vllm._compat import patch as _atom_patch
 from atom.plugin.vllm.paged_state_checkpoint import adapter_for_kv_cache_config
 from atom.utils import envs
 
@@ -786,6 +787,7 @@ def bind_scheduler_state_checkpoints(scheduler) -> SchedulerStateCheckpoints | N
     return st
 
 
+@_atom_patch("paged_state_checkpoint_scheduler.apply_scheduler_patches")
 def apply_scheduler_patches() -> bool:
     from vllm.v1.core.sched.scheduler import Scheduler
 

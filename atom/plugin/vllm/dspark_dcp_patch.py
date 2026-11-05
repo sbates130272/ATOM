@@ -17,6 +17,8 @@ import logging
 
 import torch
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+
 logger = logging.getLogger("atom")
 
 # (cp_size, cp_rank, cp_interleave), captured from the BlockTables the
@@ -25,6 +27,7 @@ logger = logging.getLogger("atom")
 _DCP_LAYOUT: tuple[int, int, int] | None = None
 
 
+@_atom_patch("dspark_dcp_patch.apply_vllm_dspark_dcp_config_patch")
 def apply_vllm_dspark_dcp_config_patch() -> None:
     """Drop vLLM's blanket "K3 DSpark cannot run under DCP" rejection.
 
@@ -132,6 +135,7 @@ def _context_request_ids_and_valid_mask(
     return context_req, context_token_idx < valid_context_ends[context_req]
 
 
+@_atom_patch("dspark_dcp_patch.apply_vllm_dspark_dcp_input_patch")
 def apply_vllm_dspark_dcp_input_patch() -> None:
     """Make the DFlash/DSpark draft address the KV cache in per-rank terms.
 

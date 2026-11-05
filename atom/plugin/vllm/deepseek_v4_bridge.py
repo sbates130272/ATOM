@@ -23,6 +23,7 @@ from atom.model_ops.attentions.pool_layout.v4_pool_geometry import (
     visible_csa,
     visible_hca,
 )
+from atom.plugin.vllm._compat import patch as _atom_patch
 from atom.plugin.vllm.state_slot_allocator import (
     SharedSlotLookup as _V4SharedSlotLookup,
 )
@@ -730,6 +731,7 @@ def check_deepseek_v4_model_runner(vllm_config, *, is_mtp: bool) -> None:
         )
 
 
+@_atom_patch("deepseek_v4_bridge.register_deepseek_v4_proxy_layer")
 def register_deepseek_v4_proxy_layer(
     vllm_config,
     layer_name: str = ATOM_DEEPSEEK_V4_PROXY_LAYER_NAME,
@@ -766,6 +768,7 @@ def _v4_kv_sharing_layers(static_forward_context) -> dict[str, str]:
     }
 
 
+@_atom_patch("deepseek_v4_bridge.apply_vllm_v4_draft_kv_sharing_patch")
 def apply_vllm_v4_draft_kv_sharing_patch() -> None:
     """Let the MTP draft's proxy use the target proxy's KV instead of its own.
 

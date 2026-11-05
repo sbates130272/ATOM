@@ -23,6 +23,9 @@ key is the sign this patch is still needed.
 import functools
 import logging
 
+from atom.plugin.vllm._compat import patch as _atom_patch
+from atom.plugin.vllm._compat import stood_down as _atom_stood_down
+
 logger = logging.getLogger("atom")
 
 _KIMI_K3_MODULE_PREFIX = "vllm.models.kimi_k3."
@@ -47,6 +50,7 @@ def _keys_that_are_arguments(fn, key):
     return [name for name in key if name in arg_names]
 
 
+@_atom_patch("kimi_k3_kda_autotune_patch.apply_vllm_kimi_k3_kda_autotune_patch")
 def apply_vllm_kimi_k3_kda_autotune_patch() -> bool:
     """Wrap ``triton.autotune``. Idempotent; returns whether this call installed it.
 
@@ -56,7 +60,8 @@ def apply_vllm_kimi_k3_kda_autotune_patch() -> bool:
     """
     try:
         import triton
-    except ImportError:
+    except ImportError as e:
+        _atom_stood_down(f"triton not importable: {e}")
         return False
     original = triton.autotune
     if getattr(original, "_atom_kimi_k3_autotune_keys_patched", False):
